@@ -7,6 +7,7 @@ import {
   updateCarStatusWithWorker,
   getAvailableWorkers,
   getAllCateCars,
+  getCarsByLocation,
   getAllLocations,
   getAllWorkers
 } from '../apis/index';
@@ -42,14 +43,14 @@ import {
   CardContent,
   CardActions,
   Divider,
-  CircularProgress,
-  Stack,
 } from '@mui/material';
 import {
   Edit,
   Delete,
   CheckCircle,
-  CalendarMonth,
+  HourglassEmpty,
+  HourglassBottom,
+  HourglassTop,
   Schedule,
   BuildCircle,
   LocationOn,
@@ -59,18 +60,8 @@ import {
   Build,
   Person,
   SwapHoriz,
-  Star,
-  StarBorder,
-  Shield,
-  ShieldOutlined,
-  LocalHospital,
-  LocalHospitalOutlined,
 } from '@mui/icons-material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import dayjs from 'dayjs';
-
+import moment from 'moment';
 const ManageCars = () => {
   const [cars, setCars] = useState([]);
   const [allCars, setAllCars] = useState([]);
@@ -85,14 +76,14 @@ const ManageCars = () => {
   const [carTypes, setCarTypes] = useState([]);
   const [locations, setLocations] = useState([]);
   const [selectedLocation, setSelectedLocation] = useState('all');
-  const [selectedDate, setSelectedDate] = useState(null);
   const [selectedNewWorker, setSelectedNewWorker] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [password, setPassword] = useState('');
   const [deleteTargetId, setDeleteTargetId] = useState(null);
-  const [loadingCarId, setLoadingCarId] = useState(null); // hoặc Set nếu nhiều xe đồng thời
+
+
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -100,9 +91,8 @@ const ManageCars = () => {
   const fetchCars = async () => {
     try {
       const res = await getAllCars();
-      const sortedCars = res.data.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-      setAllCars(sortedCars);
-      setCars(sortedCars);
+      setAllCars(res.data);
+      setCars(res.data);
     } catch (err) {
       console.error('Lỗi khi lấy danh sách xe:', err);
     }
@@ -116,7 +106,6 @@ const ManageCars = () => {
       console.error('Lỗi khi lấy danh sách địa điểm:', err);
     }
   };
-
   const isCarPasswordVerified = () => {
     const verifiedUntil = localStorage.getItem('car_verified_until');
     return verifiedUntil && new Date(verifiedUntil) > new Date();
@@ -183,42 +172,22 @@ const ManageCars = () => {
 
   const handleLocationChange = async (locationId) => {
     setSelectedLocation(locationId);
-    try {
-      const res = await getAllCars();
-      const sortedCars = res.data.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-      setAllCars(sortedCars);
-      filterCars(locationId, selectedDate, sortedCars);
-    } catch (error) {
-      console.error('Lỗi khi làm mới danh sách xe:', error);
+
+    if (locationId === 'all') {
+      setCars(allCars);
+    } else {
+      try {
+        const res = await getCarsByLocation(locationId);
+        setCars(res.data);
+      } catch (err) {
+        console.error('Lỗi khi lấy xe theo địa điểm:', err);
+        setSnackbar({
+          open: true,
+          message: 'Lỗi khi lọc xe theo địa điểm',
+          severity: 'error'
+        });
+      }
     }
-  };
-
-  const handleDateChange = async (newDate) => {
-    setSelectedDate(newDate);
-    try {
-      const res = await getAllCars();
-      const sortedCars = res.data.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-      setAllCars(sortedCars);
-      filterCars(selectedLocation, newDate, sortedCars);
-    } catch (error) {
-      console.error('Lỗi khi làm mới danh sách xe:', error);
-    }
-  };
-
-  const filterCars = (locationId, date, carList) => {
-    const sourceCars = carList || allCars;
-    let filteredCars = [...sourceCars];
-
-    if (locationId !== 'all') {
-      filteredCars = filteredCars.filter(car => car.location?._id === locationId);
-    }
-
-    if (date) {
-      const selectedDateString = dayjs(date).format('YYYY-MM-DD');
-      filteredCars = filteredCars.filter(car => car.currentDate === selectedDateString);
-    }
-
-    setCars(filteredCars);
   };
 
   useEffect(() => {
@@ -253,63 +222,61 @@ const ManageCars = () => {
     return React.cloneElement(config.icon, { color: config.color });
   };
 
-  const renderCondition = (condition) => {
-    const conditionConfig = {
-      'vip': { icon: <Star />, label: 'VIP', color: 'warning' },
-      'good': { icon: <StarBorder />, label: 'Tốt', color: 'success' },
-      'normal': { icon: <ShieldOutlined />, label: 'Bình thường', color: 'default' },
-      'warranty': { icon: <LocalHospitalOutlined />, label: 'Bảo hành', color: 'info' },
-      'rescue': { icon: <LocalHospital />, label: 'Cứu hộ', color: 'error' },
-      null: { icon: <Shield />, label: 'Chưa xác định', color: 'default' }
-    };
+const handleEditClick = async (car) => {
+  try {
+    const availableRes = await getAvailableWorkers();
+    let merged = [...availableRes.data];
 
-    const config = conditionConfig[condition] || conditionConfig[null];
-    return (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        {React.cloneElement(config.icon, { color: config.color })}
-        <Typography variant="body2" color={config.color === 'default' ? 'textSecondary' : config.color}>
-          {config.label}
-        </Typography>
-      </Box>
-    );
-  };
+    car.workers.forEach(({ worker }) => {
+      if (!merged.find((w) => w._id === worker._id)) {
+        merged.push(worker);
+      }
+    });
 
-  const handleEditClick = async (car) => {
-    try {
-      const availableRes = await getAvailableWorkers();
-      let merged = [...availableRes.data];
+    setWorkers(merged);
 
-      car.workers.forEach(({ worker }) => {
-        if (!merged.find((w) => w._id === worker._id)) {
-          merged.push(worker);
-        }
-      });
+    const mainWorkerIds = car.workers
+      .filter((w) => w.role === "main")
+      .map((w) => w.worker._id);
+    const subWorkerIds = car.workers
+      .filter((w) => w.role === "sub")
+      .map((w) => w.worker._id);
 
-      setWorkers(merged);
+    // 👇 Xử lý deliveryTime tách ra ngày và giờ
+    const momentDelivery = moment(car.deliveryTime, 'DD-MM-YYYY HH[h]');
+    const deliveryDate = momentDelivery.isValid()
+      ? momentDelivery.format('YYYY-MM-DD') // Phù hợp với type="date"
+      : '';
+    const deliveryHour = momentDelivery.isValid()
+      ? momentDelivery.format('HH') // Giờ dạng '00' đến '23'
+      : '';
 
-      const mainWorkerIds = car.workers.filter((w) => w.role === 'main').map((w) => w.worker._id);
-      const subWorkerIds = car.workers.filter((w) => w.role === 'sub').map((w) => w.worker._id);
+    setEditData({
+      ...car,
+      mainWorkers: mainWorkerIds,
+      subWorkers: subWorkerIds,
+      supervisor: car.supervisor?._id || '',
+      carType: car.carType || null,
+      deliveryDate,
+      deliveryHour,
+    });
 
-      setEditData({
-        ...car,
-        mainWorkers: mainWorkerIds,
-        subWorkers: subWorkerIds,
-        supervisor: car.supervisor?._id || '',
-        carType: car.carType || null,
-      });
-
-      setEditOpen(true);
-    } catch (error) {
-      console.error('Lỗi khi lấy dữ liệu thợ khi sửa xe:', error);
-    }
-  };
+    setEditOpen(true);
+  } catch (error) {
+    console.error('Lỗi khi lấy dữ liệu thợ khi sửa xe:', error);
+  }
+};
 
   const handleEditSave = async () => {
     try {
+      // Gộp ngày và giờ lại theo định dạng yêu cầu
+      const formattedDate = moment(editData.deliveryDate, 'YYYY-MM-DD').format('DD-MM-YYYY');
+      const deliveryTime = `${formattedDate} ${editData.deliveryHour}h`;
+
       const updatedCar = {
         plateNumber: editData.plateNumber,
         carType: editData.carType?._id || '',
-        deliveryTime: editData.deliveryTime,
+        deliveryTime,
         supervisor: editData.supervisor || null,
         workers: [
           ...editData.mainWorkers.map((id) => ({ worker: id, role: 'main' })),
@@ -318,6 +285,7 @@ const ManageCars = () => {
       };
 
       await updateCar(editData._id, updatedCar);
+
       setEditOpen(false);
       fetchCars();
       fetchData();
@@ -350,6 +318,8 @@ const ManageCars = () => {
     }
   };
 
+
+  // Kiểm tra xem có thể chuyển trạng thái nào từ trạng thái hiện tại
   const getAvailableStatusTransitions = (currentStatus) => {
     const transitions = {
       'pending': ['working'],
@@ -364,6 +334,7 @@ const ManageCars = () => {
     return transitions[currentStatus] || [];
   };
 
+  // Kiểm tra xem có cần chọn thợ mới không
   const needsWorkerSelection = (currentStatus, newStatus) => {
     return (
       (currentStatus === 'done' && newStatus === 'waiting_wash') ||
@@ -375,37 +346,28 @@ const ManageCars = () => {
     const needsWorker = needsWorkerSelection(car.status, newStatus);
 
     if (needsWorker) {
+      // Mở dialog chọn thợ
       setStatusUpdateData({ car, newStatus, needsWorker: true });
       setSelectedNewWorker('');
-      fetchAvailableWorkers();
+      fetchAvailableWorkers(); // Refresh danh sách thợ rảnh
       setStatusUpdateOpen(true);
     } else {
+      // Cập nhật trạng thái trực tiếp
       handleChangeStatus(car._id, newStatus);
-    }
-  };
-
-  const refreshAndFilterCars = async () => {
-    try {
-      const res = await getAllCars();
-      const sortedCars = res.data.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-      setAllCars(sortedCars);
-      filterCars(selectedLocation, selectedDate, sortedCars);
-    } catch (error) {
-      console.error('Lỗi khi làm mới danh sách xe:', error);
     }
   };
 
   const handleChangeStatus = async (id, newStatus, newWorkerId = null) => {
     try {
-      setLoadingCarId(id);
-
       const res = await updateCarStatusWithWorker(id, newStatus, newWorkerId);
 
-      await refreshAndFilterCars();
+      // Refresh data
+      if (selectedLocation === 'all') {
+        fetchCars();
+      } else {
+        handleLocationChange(selectedLocation);
+      }
       fetchAvailableWorkers();
-
-      localStorage.setItem('carStatusUpdated', Date.now().toString());
-      window.dispatchEvent(new Event('carStatusUpdated'));
 
       setSnackbar({
         open: true,
@@ -420,8 +382,6 @@ const ManageCars = () => {
         message: errorMessage,
         severity: 'error',
       });
-    } finally {
-      setLoadingCarId(null);
     }
   };
 
@@ -475,12 +435,6 @@ const ManageCars = () => {
             <Typography variant="body2" color="textSecondary">
               <strong>Địa điểm:</strong> {car.location?.name || 'Chưa xác định'}
             </Typography>
-            <Typography variant="body2" color="textSecondary">
-              <strong>Tình trạng:</strong>
-            </Typography>
-            <Box sx={{ ml: 1 }}>
-              {renderCondition(car.condition)}
-            </Box>
           </Grid>
           <Grid item xs={12} sm={6}>
             <Typography variant="body2" color="textSecondary">
@@ -503,21 +457,18 @@ const ManageCars = () => {
 
       <CardActions sx={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {loadingCarId === car._id ? (
-            <CircularProgress size={24} />
-          ) : (
-            getAvailableStatusTransitions(car.status).map((status) => (
-              <Tooltip key={status} title={`Chuyển sang ${getStatusConfig(status).label}`}>
-                <IconButton
-                  size="small"
-                  color={getStatusConfig(status).color}
-                  onClick={() => handleStatusChangeClick(car, status)}
-                >
-                  {renderStatusIcon(status)}
-                </IconButton>
-              </Tooltip>
-            ))
-          )}
+          {getAvailableStatusTransitions(car.status).map((status) => (
+            <Button
+              key={status}
+              size="small"
+              variant="outlined"
+              startIcon={renderStatusIcon(status)}
+              onClick={() => handleStatusChangeClick(car, status)}
+              sx={{ textTransform: 'none' }}
+            >
+              {getStatusConfig(status).label}
+            </Button>
+          ))}
         </Box>
 
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -548,7 +499,6 @@ const ManageCars = () => {
             <TableCell>Biển số</TableCell>
             <TableCell>Loại xe</TableCell>
             <TableCell>Trạng thái</TableCell>
-            <TableCell>Tình trạng</TableCell>
             <TableCell>Thợ chính</TableCell>
             <TableCell>Thợ phụ</TableCell>
             <TableCell>Thời gian giao</TableCell>
@@ -574,33 +524,25 @@ const ManageCars = () => {
                   size="small"
                 />
               </TableCell>
-              <TableCell>
-                {renderCondition(car.condition)}
-              </TableCell>
               <TableCell>{getWorkerNames(car, 'main')}</TableCell>
               <TableCell>{getWorkerNames(car, 'sub')}</TableCell>
               <TableCell>{car.deliveryTime || 'Chưa xác định'}</TableCell>
               <TableCell>{car.location?.name || 'Chưa xác định'}</TableCell>
               <TableCell>
                 <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                  {loadingCarId === car._id ? (
-                    <CircularProgress size={24} />
-                  ) : (
-                    getAvailableStatusTransitions(car.status).map((status) => (
-                      <Tooltip key={status} title={`Chuyển sang ${getStatusConfig(status).label}`}>
-                        <IconButton
-                          size="small"
-                          color={getStatusConfig(status).color}
-                          onClick={() => handleStatusChangeClick(car, status)}
-                        >
-                          {renderStatusIcon(status)}
-                        </IconButton>
-                      </Tooltip>
-                    ))
-                  )}
+                  {getAvailableStatusTransitions(car.status).map((status) => (
+                    <Tooltip key={status} title={`Chuyển sang ${getStatusConfig(status).label}`}>
+                      <IconButton
+                        size="small"
+                        color={getStatusConfig(status).color}
+                        onClick={() => handleStatusChangeClick(car, status)}
+                      >
+                        {renderStatusIcon(status)}
+                      </IconButton>
+                    </Tooltip>
+                  ))}
                 </Box>
               </TableCell>
-
               <TableCell>
                 <Box sx={{ display: 'flex', gap: 0.5 }}>
                   <IconButton
@@ -632,50 +574,38 @@ const ManageCars = () => {
         Quản lý xe
       </Typography>
 
+      {/* Bộ lọc địa điểm */}
       <Paper sx={{ p: 2, mb: 3 }}>
-        <Stack spacing={2}>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <LocationOn color="action" />
-            <FormControl fullWidth>
-              <InputLabel>Lọc theo địa điểm</InputLabel>
-              <Select
-                value={selectedLocation}
-                onChange={(e) => handleLocationChange(e.target.value)}
-                label="Lọc theo địa điểm"
-              >
-                <MenuItem value="all">
-                  <Typography fontWeight="bold">Tất cả địa điểm</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+          <LocationOn color="primary" />
+          <FormControl sx={{ minWidth: 200 }}>
+            <InputLabel>Lọc theo địa điểm</InputLabel>
+            <Select
+              value={selectedLocation}
+              onChange={(e) => handleLocationChange(e.target.value)}
+              label="Lọc theo địa điểm"
+            >
+              <MenuItem value="all">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" fontWeight="bold">
+                    Tất cả địa điểm
+                  </Typography>
+                </Box>
+              </MenuItem>
+              {locations.map((location) => (
+                <MenuItem key={location._id} value={location._id}>
+                  {location.name}
                 </MenuItem>
-                {locations.map((location) => (
-                  <MenuItem key={location._id} value={location._id}>
-                    {location.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Box>
-
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CalendarMonth color="action" />
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <DatePicker
-                label="Lọc theo ngày"
-                value={selectedDate}
-                onChange={handleDateChange}
-                slotProps={{
-                  textField: { fullWidth: true },
-                }}
-              />
-            </LocalizationProvider>
-          </Box>
-
-          <Typography variant="body1">
-            <strong>Tổng cộng:</strong> {cars.length} xe
+              ))}
+            </Select>
+          </FormControl>
+          <Typography variant="body2" color="textSecondary">
+            Tổng cộng: {cars.length} xe
           </Typography>
-        </Stack>
+        </Box>
       </Paper>
 
+      {/* Hiển thị danh sách xe */}
       {isMobile ? (
         <Box>
           {cars.map(renderCarCard)}
@@ -701,12 +631,35 @@ const ManageCars = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Thời gian giao"
-                name="deliveryTime"
-                value={editData.deliveryTime || ''}
-                onChange={handleChange}
+                label="Ngày giao xe (DD-MM-YYYY)"
+                type="date"
+                value={editData.deliveryDate || ''}
+                onChange={(e) =>
+                  setEditData((prev) => ({ ...prev, deliveryDate: e.target.value }))
+                }
+                InputLabelProps={{ shrink: true }}
               />
             </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Giờ giao xe (HH)</InputLabel>
+                <Select
+                  value={editData.deliveryHour || ''}
+                  label="Giờ giao xe (HH)"
+                  onChange={(e) =>
+                    setEditData((prev) => ({ ...prev, deliveryHour: e.target.value }))
+                  }
+                >
+                  {[...Array(24).keys()].map((hour) => (
+                    <MenuItem key={hour} value={hour}>
+                      {hour}h
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+
             <Grid item xs={12} sm={6}>
               <Autocomplete
                 options={carTypes}
