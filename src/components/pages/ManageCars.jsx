@@ -144,6 +144,19 @@ const ManageCars = () => {
     { value: 'additional_repair', label: 'Sửa bổ sung', icon: <Build />, color: 'error' },
   ];
 
+  const CONDITION_OPTIONS = {
+    vip: { label: 'VIP', color: 'warning' },
+    good: { label: 'Tốt', color: 'success' },
+    normal: { label: 'Bình thường', color: 'default' },
+    warranty: { label: 'Bảo hành', color: 'info' },
+    rescue: { label: 'Cứu hộ', color: 'error' },
+    null: { label: 'Bình thường', color: 'default' }
+  };
+
+  const getConditionConfig = (condition) => {
+    return CONDITION_OPTIONS[condition] || CONDITION_OPTIONS.null;
+  };
+
   const getStatusConfig = (status) => {
     return STATUS_OPTIONS.find(option => option.value === status) || STATUS_OPTIONS[0];
   };
@@ -222,50 +235,50 @@ const ManageCars = () => {
     return React.cloneElement(config.icon, { color: config.color });
   };
 
-const handleEditClick = async (car) => {
-  try {
-    const availableRes = await getAvailableWorkers();
-    let merged = [...availableRes.data];
+  const handleEditClick = async (car) => {
+    try {
+      const availableRes = await getAvailableWorkers();
+      let merged = [...availableRes.data];
 
-    car.workers.forEach(({ worker }) => {
-      if (!merged.find((w) => w._id === worker._id)) {
-        merged.push(worker);
-      }
-    });
+      car.workers.forEach(({ worker }) => {
+        if (!merged.find((w) => w._id === worker._id)) {
+          merged.push(worker);
+        }
+      });
 
-    setWorkers(merged);
+      setWorkers(merged);
 
-    const mainWorkerIds = car.workers
-      .filter((w) => w.role === "main")
-      .map((w) => w.worker._id);
-    const subWorkerIds = car.workers
-      .filter((w) => w.role === "sub")
-      .map((w) => w.worker._id);
+      const mainWorkerIds = car.workers
+        .filter((w) => w.role === "main")
+        .map((w) => w.worker._id);
+      const subWorkerIds = car.workers
+        .filter((w) => w.role === "sub")
+        .map((w) => w.worker._id);
 
-    // 👇 Xử lý deliveryTime tách ra ngày và giờ
-    const momentDelivery = moment(car.deliveryTime, 'DD-MM-YYYY HH[h]');
-    const deliveryDate = momentDelivery.isValid()
-      ? momentDelivery.format('YYYY-MM-DD') // Phù hợp với type="date"
-      : '';
-    const deliveryHour = momentDelivery.isValid()
-      ? momentDelivery.format('HH') // Giờ dạng '00' đến '23'
-      : '';
+      // 👇 Xử lý deliveryTime tách ra ngày và giờ
+      const momentDelivery = moment(car.deliveryTime, 'DD-MM-YYYY HH[h]');
+      const deliveryDate = momentDelivery.isValid()
+        ? momentDelivery.format('YYYY-MM-DD') // Phù hợp với type="date"
+        : '';
+      const deliveryHour = momentDelivery.isValid()
+        ? momentDelivery.format('HH') // Giờ dạng '00' đến '23'
+        : '';
 
-    setEditData({
-      ...car,
-      mainWorkers: mainWorkerIds,
-      subWorkers: subWorkerIds,
-      supervisor: car.supervisor?._id || '',
-      carType: car.carType || null,
-      deliveryDate,
-      deliveryHour,
-    });
+      setEditData({
+        ...car,
+        mainWorkers: mainWorkerIds,
+        subWorkers: subWorkerIds,
+        supervisor: car.supervisor?._id || '',
+        carType: car.carType || null,
+        deliveryDate,
+        deliveryHour,
+      });
 
-    setEditOpen(true);
-  } catch (error) {
-    console.error('Lỗi khi lấy dữ liệu thợ khi sửa xe:', error);
-  }
-};
+      setEditOpen(true);
+    } catch (error) {
+      console.error('Lỗi khi lấy dữ liệu thợ khi sửa xe:', error);
+    }
+  };
 
   const handleEditSave = async () => {
     try {
@@ -430,6 +443,15 @@ const handleEditClick = async (car) => {
               <strong>Loại xe:</strong> {car.carType?.name || 'Chưa xác định'}
             </Typography>
             <Typography variant="body2" color="textSecondary">
+              <strong>Tình trạng:</strong>
+              <Chip
+                label={getConditionConfig(car.condition).label}
+                color={getConditionConfig(car.condition).color}
+                size="small"
+                sx={{ ml: 1 }}
+              />
+            </Typography>
+            <Typography variant="body2" color="textSecondary">
               <strong>Thời gian giao:</strong> {car.deliveryTime || 'Chưa xác định'}
             </Typography>
             <Typography variant="body2" color="textSecondary">
@@ -498,6 +520,7 @@ const handleEditClick = async (car) => {
           <TableRow>
             <TableCell>Biển số</TableCell>
             <TableCell>Loại xe</TableCell>
+            <TableCell>Tình trạng</TableCell>
             <TableCell>Trạng thái</TableCell>
             <TableCell>Thợ chính</TableCell>
             <TableCell>Thợ phụ</TableCell>
@@ -516,6 +539,13 @@ const handleEditClick = async (car) => {
                 </Typography>
               </TableCell>
               <TableCell>{car.carType?.name || 'Chưa xác định'}</TableCell>
+              <TableCell>
+                <Chip
+                  label={getConditionConfig(car.condition).label}
+                  color={getConditionConfig(car.condition).color}
+                  size="small"
+                />
+              </TableCell>
               <TableCell>
                 <Chip
                   icon={renderStatusIcon(car.status)}
